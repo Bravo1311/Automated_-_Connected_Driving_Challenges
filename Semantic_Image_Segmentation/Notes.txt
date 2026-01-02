@@ -1,0 +1,87 @@
+1. Import the training dataset (Images and Labels):
+    Shuffle the dataset to prevent learning order bias
+
+2. Import or create color class association (rgb_to_class_id)
+
+3.Convert RGB label image into a segmentation map:
+
+    Initialise a 0 valued segmentation map tensor 
+
+    iterate over rgb_to_class_id (color, class_id):
+        tf.where(
+            condition = tf.reduce_all(tf.equal(label_image, color), axis = -1)
+                Note: reduce_all reduces the tensor to the given dimension
+            x = class_id (if the color matches) (cast to uint8)
+            y = 0 (segmentation map default)
+        )
+    
+    segmentation_map = tf.expand_dims(segmentation_map, -1)
+    
+    return segmentation_map
+
+3.Building TensorFlow Input Pipeline (parse_sample):
+
+    a. Load and decode the images and Labels
+    
+    b. Resize all images to the same size. Some methods: image.ResizeMethod.BILINEAR & tf.image.ResizeMethod.NEAREST_NEIGHBOR
+
+    c. Use the previously developed method to convert rgb encoding (labels) to segmentation_map
+
+    d. Return image_rgb and segmentation_map
+
+4. Normalize image and label
+
+5.Dataset Creation:
+    a. dataset = tf.data.Dataset.from_tensor_slices((images_path, labels_path))
+        This generates image label pairs by creating a dataset of their paths (doesn't load images into memory)
+
+    b. Shuffle dataset
+
+    c. dataset = dataset.map(parse_sample, num_parallel_calls=tf.data.AUTOTUNE)
+        apply parse_sample to every element of the dataset. autotune handles the cpu threads for parallelisation
+
+    d. dataset = dataset.map(normalize, num_parallel_calls=tf.data.AUTOTUNE)
+        normalise the dataset
+
+    e. dataset = dataset.batch(batch_size=batch_size)
+        make batches out of the dataset
+    
+    f. dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
+        loads an automatically determined no of batches beforehand for reduced latency
+
+6. Split the dataset for training and testing
+
+7. Model Architecture: Encoder + Decoder with skip connectionsd
+    define encoder and decoder functions
+
+8.Assemble the Model (getModel()):
+    a. input_tensor = Input(input_shape)
+        start of the keras tree of shape input_shape
+
+    b. encoder_result = encoder()
+
+    c. reconstruction = decoder()
+
+    #prediction layer - input for softmax function
+    d. logits = Conv2D(filters=num_classes,
+                    kernel_size=kernel_size,
+                    padding="same",
+                    activation=activation)(reconstruction)
+
+    e. probabilities = Activation("softmax")(logits)  
+
+    f. return segmentation_model = Model(inputs=input_tensor, outputs=probabilities)
+
+9. Print model.summary() for reference.
+
+10. Compile the model by adding optimiser, loss function and metrics to observe training
+
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+              loss="sparse_categorical_crossentropy",
+              metrics=[SparseMeanIoU(num_classes=30, name="MIoU")])
+
+11. Train the model:
+    history = model.fit(train, validation_data=val, epochs=1)
+
+12. To load a model:
+    model.load_weights(path_to_model)
